@@ -1,0 +1,16 @@
+{
+  "name": "pruner",
+  "version": "0.1.0",
+  "description": "prune stale tv episode files from a plex server",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["plex"],
+  "author": "chuckbjones",
+  "license": "ISC",
+  "dependencies": {
+    "js-yaml": "^3.14.0",
+    "plex-api": "^5.3.1"
+  }
+}
