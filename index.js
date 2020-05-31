@@ -105,7 +105,7 @@ const PlexAPI = require("plex-api");
         // watched shows that I'm not going to rewatch. but give them a grace 
         // period in case someone else wants to watch them, or in case of 
         // accidents.
-        if ((latest - idx) > stale_watched) {
+        if ((latest - idx) >= stale_watched) {
           state = 'S';
         } else {
           state = 'W';
@@ -113,7 +113,7 @@ const PlexAPI = require("plex-api");
       } else if (delete_unwatched) { 
         // unwatched and we are configured to delete episodes of 
         // this show after they get out of date (like news programs)
-        if ((latest - idx) > stale_unwatched) {
+        if ((latest - idx) >= stale_unwatched) {
           state = 'S'
         }
       }
