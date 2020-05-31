@@ -1,12 +1,15 @@
 {
   "name": "pruner",
+  "repository": "https://github.com/chuckbjones/pruner",
   "version": "0.1.0",
   "description": "prune stale tv episode files from a plex server",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["plex"],
+  "keywords": [
+    "plex"
+  ],
   "author": "chuckbjones",
   "license": "ISC",
   "dependencies": {
