@@ -2,3 +2,4 @@
 .env
 config.yaml
 node_modules/
+tmp

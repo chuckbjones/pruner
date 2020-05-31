@@ -1,6 +1,7 @@
 // const util = require('util');
 const _ = require('lodash');
 const fs = require('fs');
+const path = require('path');
 const yaml = require('js-yaml');
 const PlexAPI = require("plex-api");
 
@@ -126,6 +127,7 @@ const PlexAPI = require("plex-api");
 
   const config_path = process.argv[2];
   const config = loadConfig(config_path);
+  const prefix = process.env.PRUNER_PATH_PREFIX || '';
   const hostname = process.env.PLEX_HOSTNAME;
   const token = process.env.PLEX_TOKEN;
   const client = new PlexAPI({"hostname": hostname, "token": token});
@@ -139,11 +141,89 @@ const PlexAPI = require("plex-api");
 
   console.log("\n\nDone.");
 
+  const to_delete = [];
+
   Object.keys(show_info).forEach(name => {
     console.log(`\n\n== ${config[name].title} ==`);
     show_info[name].forEach(ep => {
       const { number, seasonNumber, title, watched, airdate, paths, state, trash } = ep;  
-      console.log(`${trash ? '!' : ' '}[${state}] ${seasonNumber.toString().padStart(2, ' ')} ${number.toString().padStart(3, ' ')}. ${airdate}: "${title}".`);     
+      console.log(`${trash ? '!' : ' '}[${state}] ${seasonNumber.toString().padStart(2, ' ')} ${number.toString().padStart(3, ' ')}. ${airdate}: "${title}". ${paths.length} file(s).`);
+      if (trash) {
+        to_delete.push(...paths);
+      }
+    });
+  });
+
+  console.log(`\n\nFound ${to_delete.length} files to delete.\n`);
+  if (to_delete.length == 0) { return; }
+
+  to_delete.sort();
+  
+  const by_show = _.chain(to_delete)
+    .groupBy(path.dirname)
+    .toPairs()
+    .groupBy(p => path.dirname(p[0]))
+    .value();
+
+  Object.keys(by_show).forEach(show => {
+    console.log(`\n== ${show} ==`);
+    const dir = `${prefix}${show}`;
+    if (!fs.existsSync(dir)){
+      console.log(`Directory ${dir} not found...`);
+      return;
+    }  
+    
+    for (var [season, files] of by_show[show]) {
+      console.log(`\n-- ${season} --`);
+      const dir = `${prefix}${season}`;
+  
+      if (!fs.existsSync(dir)){
+        console.log(`Directory ${dir} not found...`);
+        continue;
+      }  
+
+      const before = fs.readdirSync(dir).length;
+      console.log(`Deleting ${files.length} files out of ${before}.`);
+      files.forEach(file => {
+        const path = `${prefix}${file}`;
+        if (!fs.existsSync(path)){
+          console.log(`File ${path} not found...`);
+          return;
+        }  
+
+        console.log(`Deleting ${path}...`);
+        try {
+          fs.unlinkSync(path);
+        } catch (e) {
+          console.error(e);
+        }
+      });
+
+      const after = fs.readdirSync(dir).length;
+      if (after == 0) {
+        console.log("Deleting empty directory...");
+        try {
+          fs.rmdirSync(dir);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+
+    // Check if there are any other directories in show dir that are empty
+    // and delete them.
+    fs.readdirSync(dir, {withFileTypes: true}).forEach(item => {
+      if (item.isDirectory()) {
+        const path = `${dir}/${item.name}`;
+        if (fs.readdirSync(path).length == 0) {
+          console.log(`Found another empty directory ${path}. Deleting...`);
+          try {
+            fs.rmdirSync(path);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
     });
   });
 })();
