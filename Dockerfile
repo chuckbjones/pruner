@@ -2,7 +2,8 @@ FROM node:14
 
 RUN mkdir -p /usr/src/app \
   && mkdir /config \
-  && mkdir /tv
+  && mkdir /tv \
+  && mkdir /storage
 
 WORKDIR /usr/src/app
 
