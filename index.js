@@ -29,10 +29,10 @@ const PlexAPI = require("plex-api");
         
         ret.sort((a, b) => a.number - b.number);
       } else {
-        console.log('No episodes found.')
+        console.log('[WARNING] No seasons returned.')
       }
     }, function (err) {
-      console.error("Could not connect to server", err);
+      console.error("[ERROR] Could not connect to server (seasons api)", err);
     });
 
     return ret;
@@ -57,10 +57,10 @@ const PlexAPI = require("plex-api");
         
         ret.sort((a, b) => a.seasonNumber - b.seasonNumber || a.number - b.number);
       } else {
-        console.log('No episodes found.')
+        console.log('[WARNING] No episodes returned.')
       }
     }, function (err) {
-      console.error("Could not connect to server", err);
+      console.error("[ERROR] Could not connect to server (episodes api)", err);
     });
 
     return ret;
@@ -98,7 +98,7 @@ const PlexAPI = require("plex-api");
                        // K = Keep (special cases. see below.)
       if (idx == latest || seasonNumber == 0) {
          // latest episode. if you delete it, it will mess up the on deck.
-         // if you dellete the last episode in plex, plex deletes the whole show.
+         // if you delete the last episode in plex, plex deletes the whole show.
          // deleting season 0 (Specials) is probably just an accident. why risk it.
         state = 'K';
       } else if (watched > 0) { 
@@ -169,7 +169,7 @@ const PlexAPI = require("plex-api");
     console.log(`\n== ${show} ==`);
     const dir = `${prefix}${show}`;
     if (!fs.existsSync(dir)){
-      console.log(`Directory ${dir} not found...`);
+      console.log(`[WARNING] Directory ${dir} not found...`);
       return;
     }  
     
@@ -178,7 +178,7 @@ const PlexAPI = require("plex-api");
       const dir = `${prefix}${season}`;
   
       if (!fs.existsSync(dir)){
-        console.log(`Directory ${dir} not found...`);
+        console.log(`[WARNING] Directory ${dir} not found...`);
         continue;
       }  
 
@@ -187,7 +187,7 @@ const PlexAPI = require("plex-api");
       files.forEach(file => {
         const path = `${prefix}${file}`;
         if (!fs.existsSync(path)){
-          console.log(`File ${path} not found...`);
+          console.log(`[WARNING] File ${path} not found...`);
           return;
         }  
 
@@ -195,7 +195,7 @@ const PlexAPI = require("plex-api");
         try {
           fs.unlinkSync(path);
         } catch (e) {
-          console.error(e);
+          console.error(`[ERROR] ${e}`);
         }
       });
 
@@ -205,7 +205,7 @@ const PlexAPI = require("plex-api");
         try {
           fs.rmdirSync(dir);
         } catch (e) {
-          console.error(e);
+          console.error(`[ERROR] ${e}`);
         }
       }
     }
@@ -220,7 +220,7 @@ const PlexAPI = require("plex-api");
           try {
             fs.rmdirSync(path);
           } catch (e) {
-            console.error(e);
+            console.error(`[ERROR] ${e}`);
           }
         }
       }
