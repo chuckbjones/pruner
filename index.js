@@ -1,66 +1,46 @@
-// const util = require('util');
-const _ = require('lodash');
-const fs = require('fs');
-const path = require('path');
-const yaml = require('js-yaml');
-const PlexAPI = require("plex-api");
+import { existsSync, readdirSync, readFileSync, rmdirSync, unlinkSync } from 'fs';
+import { dirname } from 'path';
+import YAML from 'yaml';
+import { PlexServer, Show } from '@ctrl/plex';
 
 (async function() {
   function loadConfig(path) {
-    const fileContents = fs.readFileSync(path, 'utf8');
-    const data = yaml.safeLoad(fileContents);
+    const fileContents = readFileSync(path, 'utf8');
+    const data = YAML.parse(fileContents);
 
     console.log(data);
     return data;
   }
 
-  async function seasons(client, show_key) {
-    let ret = [];
-
-    const url = `/library/metadata/${show_key}/children`;
-    await client.query(url).then(function (result) {
-      const mc = result.MediaContainer;
-      const ssns = mc.Metadata;
-      if (ssns.length > 0) {
-        ssns.forEach(sn => { 
-          const { index: number, ratingKey: season_key, title } = sn;
-          ret.push({ number, season_key, title });
-        });
-        
-        ret.sort((a, b) => a.number - b.number);
-      } else {
-        console.log('[WARNING] No seasons returned.')
-      }
-    }, function (err) {
-      console.error("[ERROR] Could not connect to server (seasons api)", err);
-    });
-
-    return ret;
+  async function show(client, show_key) {
+    const key = `/library/metadata/${show_key}`;
+    const resp = await client.query(key);
+    const data = resp.MediaContainer.Metadata[0];
+    return new Show(client, data, show_key);
   }
 
-  async function episodes(client, season_key) {
+  async function episodes(client, show_key) {
     let ret = [];
 
-    const url = `/library/metadata/${season_key}/children`;
-    await client.query(url).then(function (result) {
-      const mc = result.MediaContainer;
-      // console.log(util.inspect(mc, false, null, true /* enable colors */))
+    await show(client, show_key).then(s => {
+      return s.episodes().then(eps => {
+        if (eps.length > 0) {
+          eps.forEach(ep => { 
+            const { index: number, parentIndex: seasonNumber, title, viewCount: watched, originallyAvailableAt: airdate } = ep;
+            const paths = ep.media.flatMap(m => m.parts.flatMap(p => p.file));
 
-      const eps = mc.Metadata;
-      if (eps.length > 0) {
-        eps.forEach(ep => { 
-          const { index: number, parentIndex: seasonNumber, title, viewCount: watched, originallyAvailableAt: airdate } = ep;
-          const paths = ep.Media.flatMap(m => m.Part.flatMap(p => p.file));
-
-          ret.push({ number, seasonNumber, title, watched, airdate, paths });
-        });
+            ret.push({ number, seasonNumber, title, watched, airdate, paths });
+          });
         
-        ret.sort((a, b) => a.seasonNumber - b.seasonNumber || a.number - b.number);
-      } else {
-        console.log('[WARNING] No episodes returned.')
-      }
+          ret.sort((a, b) => a.seasonNumber - b.seasonNumber || a.number - b.number);
+        } else {
+          console.log('[WARNING] No episodes returned.')
+        }
+      }, function (err) {
+        console.error(`[ERROR] Failed to fetch episodes for show_key ${show_key}`, err);
+      });
     }, function (err) {
-      console.error("[ERROR] Could not connect to server (episodes api)", err);
+      console.error(`[ERROR] Failed to fetch show data for show_key ${show_key}`, err);
     });
 
     return ret;
@@ -78,14 +58,7 @@ const PlexAPI = require("plex-api");
     console.log(` stale_unwatched:  ${stale_unwatched}`);
     console.log(` stale_watched:    ${stale_watched}`);
 
-    const season_list = await seasons(client, show_key);  
-    console.log(`${season_list.length} seasons found.`);
-    if (season_list.length == 0) { return []; }
-
-    const episode_list = 
-      await Promise.all(season_list.map(({ season_key }) => episodes(client, season_key)))
-             .then(ep_list => ep_list.flat());
-
+    const episode_list = await episodes(client, show_key);
     console.log(`${episode_list.length} episodes found.`);
     if (episode_list.length == 0) { return []; }
 
@@ -128,9 +101,9 @@ const PlexAPI = require("plex-api");
   const config_path = process.argv[2];
   const config = loadConfig(config_path);
   const prefix = process.env.PRUNER_PATH_PREFIX || '';
-  const hostname = process.env.PLEX_HOSTNAME;
+  const api_url = process.env.PLEX_URL;
   const token = process.env.PLEX_TOKEN;
-  const client = new PlexAPI({"hostname": hostname, "token": token});
+  const client = new PlexServer(api_url, token);
   console.log(`${Object.keys(config).length} shows found in config file.`);
   console.log('Fetching show info...');
 
@@ -146,8 +119,9 @@ const PlexAPI = require("plex-api");
   Object.keys(show_info).forEach(name => {
     console.log(`\n\n== ${config[name].title} ==`);
     show_info[name].forEach(ep => {
-      const { number, seasonNumber, title, watched, airdate, paths, state, trash } = ep;  
-      console.log(`${trash ? '!' : ' '}[${state}] ${seasonNumber.toString().padStart(2, ' ')} ${number.toString().padStart(3, ' ')}. ${airdate}: "${title}". ${paths.length} file(s).`);
+      const { number, seasonNumber, title, airdate, paths, state, trash } = ep;
+      const dstr = (airdate instanceof Date && !isNaN(airdate)) ? airdate.toISOString().slice(0,10) : airdate.toString()
+      console.log(`${trash ? '!' : ' '}[${state}] ${seasonNumber.toString().padStart(2, ' ')} ${number.toString().padStart(3, ' ')}. ${dstr}: "${title}". ${paths.length} file(s).`);
       if (trash) {
         to_delete.push(...paths);
       }
@@ -159,51 +133,48 @@ const PlexAPI = require("plex-api");
 
   to_delete.sort();
   
-  const by_show = _.chain(to_delete)
-    .groupBy(path.dirname)
-    .toPairs()
-    .groupBy(p => path.dirname(p[0]))
-    .value();
+  const by_season = Map.groupBy(to_delete, p => dirname(p))
+  const by_show = Map.groupBy(by_season, p => dirname(p[0]))
 
-  Object.keys(by_show).forEach(show => {
+  by_show.forEach((seasons, show) => {
     console.log(`\n== ${show} ==`);
     const dir = `${prefix}${show}`;
-    if (!fs.existsSync(dir)){
+    if (!existsSync(dir)){
       console.log(`[WARNING] Directory ${dir} not found...`);
       return;
     }  
     
-    for (var [season, files] of by_show[show]) {
+    for (var [season, files] of seasons) {
       console.log(`\n-- ${season} --`);
       const dir = `${prefix}${season}`;
   
-      if (!fs.existsSync(dir)){
+      if (!existsSync(dir)){
         console.log(`[WARNING] Directory ${dir} not found...`);
         continue;
       }  
 
-      const before = fs.readdirSync(dir).length;
+      const before = readdirSync(dir).length;
       console.log(`Deleting ${files.length} files out of ${before}.`);
       files.forEach(file => {
         const path = `${prefix}${file}`;
-        if (!fs.existsSync(path)){
+        if (!existsSync(path)){
           console.log(`[WARNING] File ${path} not found...`);
           return;
         }  
 
         console.log(`Deleting ${path}...`);
         try {
-          fs.unlinkSync(path);
+          unlinkSync(path);
         } catch (e) {
           console.error(`[ERROR] ${e}`);
         }
       });
 
-      const after = fs.readdirSync(dir).length;
+      const after = readdirSync(dir).length;
       if (after == 0) {
         console.log("Deleting empty directory...");
         try {
-          fs.rmdirSync(dir);
+          rmdirSync(dir);
         } catch (e) {
           console.error(`[ERROR] ${e}`);
         }
@@ -212,13 +183,13 @@ const PlexAPI = require("plex-api");
 
     // Check if there are any other directories in show dir that are empty
     // and delete them.
-    fs.readdirSync(dir, {withFileTypes: true}).forEach(item => {
+    readdirSync(dir, {withFileTypes: true}).forEach(item => {
       if (item.isDirectory()) {
         const path = `${dir}/${item.name}`;
-        if (fs.readdirSync(path).length == 0) {
+        if (readdirSync(path).length == 0) {
           console.log(`Found another empty directory ${path}. Deleting...`);
           try {
-            fs.rmdirSync(path);
+            rmdirSync(path);
           } catch (e) {
             console.error(`[ERROR] ${e}`);
           }
