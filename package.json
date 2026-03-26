@@ -14,7 +14,7 @@
   "author": "chuckbjones",
   "license": "ISC",
   "dependencies": {
-    "yaml": "^2.7.0",
+    "yaml": "^2.8.3",
     "@ctrl/plex": "^3.4.0"
   }
 }
